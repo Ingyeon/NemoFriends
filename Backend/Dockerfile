@@ -1,0 +1,8 @@
+FROM python:3.10.5
+WORKDIR /var/jenkins_home/workspace/deploytest/backend
+COPY requirements.txt ./
+
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["gunicorn", "backend.wsgi", "--bind", "0.0.0.0:80"]
