@@ -272,3 +272,18 @@ class PlayWordchainFinishView(APIView):
         wordchain.delete()
 
         return Response(SUCCESS)
+
+
+class STTView(APIView):
+    def post(self, request):
+        username = request.user.username
+        audio = request.FILES.get('audio')
+        
+        fs = FileSystemStorage()
+        filename = fs.save(f'{username}.wav', audio)
+
+        context = speech_to_text(filename)
+        print('STT 결과입니다.', context)
+
+        fs.delete(filename)
+        fs.delete(settings.MEDIA_ROOT + f'/{filename}')
