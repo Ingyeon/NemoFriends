@@ -1,17 +1,13 @@
 from django.shortcuts import get_list_or_404, get_object_or_404
 from django.contrib.auth import get_user_model
-from django.core.files.storage import FileSystemStorage
+from django.core.cache import cache
 from django.conf import settings
 
-from rest_framework import status
 from rest_framework.decorators import APIView
 from rest_framework.response import Response
 
 from .models import Animal, User_Animal
-from items.models import User_Item
-from accounts.models import WordChain
-from .serializers import AnimalsRenameSerializer, AnimalsTestSerializer, UserAnimalSerializer
-from . import serializers
+from .serializers import AnimalsRenameSerializer
 from .utils import *
 from utils import SUCCESS, FAIL
 import logging
@@ -24,9 +20,8 @@ logger = logging.getLogger(__name__)
 
 class AnimalsEatView(APIView):
     def post(self, request):
-        id = request.data.get('id')
         result = request.data.get('result')
-        user_animal = get_object_or_404(User_Animal, pk=id)
+        user_animal = get_object_or_404(User_Animal, pk=request.data.get('id'))
 
         if request.user == user_animal.user:
             # 먹이 쿨타임
@@ -68,8 +63,7 @@ class AnimalsEatView(APIView):
 
 class AnimalsRenameView(APIView):
     def post(self, request):
-        id = request.data.get('id')
-        user_animal = get_object_or_404(User_Animal, id=id)
+        user_animal = get_object_or_404(User_Animal, pk=request.data.get('id'))
         
         if request.user == user_animal.user:
             serializer = AnimalsRenameSerializer(instance=user_animal, data=request.data)
@@ -85,10 +79,10 @@ class AnimalsTalkView(APIView):
         action = 'talking'
         grade = user_animal.grade
         commands = user_animal.animal.commands[:grade+1]
+        commands.extend(allowance_dict)
 
         for i in range(1, len(commands)):
             if commands[i] in context:
-
                 # 대화 보상 Ok
                 if user_animal.talking_cnt:
                     user_animal = reward_exp(user_animal, user, action)
@@ -104,11 +98,9 @@ class AnimalsTalkView(APIView):
         return FAIL
 
     def post(self, request):
-        try:
-            context = recongize(request.user.username, request.data.get("audio"))
-        except:
-            context = '추희원 앉아!'
-            
+        context = recongize(request.user.username, request.data.get("audio"))
+
+        response = {}
         user = get_object_or_404(get_user_model(), username=request.user)
         user_animals = get_list_or_404(User_Animal, user=user)
         
@@ -133,14 +125,8 @@ class AnimalsPlayWordchainStartView(APIView):
 
         response_word = random.choice(start_words)
 
-        # 삭제되지 않은 게임 기록 확인
-        check = WordChain.objects.filter(user=user)
-        if check:
-            for wordchain in check:
-                wordchain.delete()
-            
-        wordchain = WordChain(user=user, score=0, words=[response_word])
-        wordchain.save()
+        # 게임 기록 초기화
+        cache.set(user.username, [0, response_word], 60 * 60)
 
         response = SUCCESS.copy()
         response.update({'response_word': response_word})
@@ -157,12 +143,16 @@ class AnimalsPlayWordchainNextView(APIView):
 
     def post(self, request):
         user = request.user
+        username = user.username
+        request_word = recongize(username, request.data.get("audio"))
+        words = cache.get(username)
 
-        request_word = recongize(user.username, request.FILES['audio'])
+        # 게임을 시작했는지 확인
+        if words is None:
+            response = self.finish('게임이 시작되지 않았습니다.', 0, request_word)
+            return Response(response)
 
-        wordchain = get_object_or_404(WordChain, user=user)
-        words = wordchain.words
-        score = wordchain.score
+        score = words[0]
         
         # 사용자의 단어가 사전에 존재하는 단어인지 확인
         if request_word not in noun_dictionary:
@@ -199,36 +189,38 @@ class AnimalsPlayWordchainNextView(APIView):
         
         # 선택할 수 있는 다음 단어가 없는 경우 사용자의 승리
         if len(response_words) < 1:
-            score += 1
-            score *= 2
-            wordchain.score = score
-            wordchain.save()
+            words[0] = (words[0] + 1) * 2
+            cache.set(username, words, 60 * 60)
             response = self.finish('사용자가 이겼습니다.', score, request_word)
             return Response(response)
         
         response_word = random.choice(response_words)
         
         # WordChain 테이블 갱신
-        score += 1
+        words[0] += 1
         words.append(response_word)
-        wordchain.score = score
-        wordchain.words = words
-        wordchain.save()
+        cache.set(username, words, 60 * 60)
 
         response = SUCCESS.copy()
-        response.update({'request_word': request_word, 'response_word': response_word, 'score': wordchain.score})
+        response.update({'request_word': request_word, 'response_word': response_word, 'score': words[0]})
         return Response(response)
 
 
 class AnimalsPlayWordchainFinishView(APIView):
     def post(self, request):
         user = request.user
-        wordchain = get_object_or_404(WordChain, user=user)
-        score = wordchain.score
+        username = user.username
+        words = cache.get(username)
+
+        if words is None:
+            score = 0
+        else:
+            score = words[0]
+        
         animal_id = request.data.get('animal_id')
         animal = get_object_or_404(Animal, pk=animal_id)
         user_animal = get_object_or_404(User_Animal, user=user, animal=animal)
-        action = 'playing'
+        action = 'playing_wordchain'
 
         # 골드 증가
         user = reward_gold(user, action, score)
@@ -241,16 +233,15 @@ class AnimalsPlayWordchainFinishView(APIView):
         user_animal = reward_exp(user_animal, user, action, score)
         user_animal.save()
 
-        # wordchain에서 행 삭제
-        wordchain.delete()
+        # 끝말잇기 기록 제거
+        cache.delete(username)
 
         return Response(SUCCESS)
 
 
 class AnimalsPlaceView(APIView):
     def post(self, request):
-        id = request.data.get('id')
-        user_animal = get_object_or_404(User_Animal, id=id)
+        user_animal = get_object_or_404(User_Animal, id=request.data.get('id'))
 
         if request.user == user_animal.user:
             user_animal.is_located = user_animal.is_located ^ 1
@@ -275,7 +266,7 @@ class AnimalsMazeView(APIView):
 class AnimalsExpUpView(APIView):
     def post(self, request):
         user = request.user
-        user_animal = get_object_or_404(User_Animal, id=request.data.get('id'))
+        user_animal = get_object_or_404(User_Animal, pk=request.data.get('id'))
         response = FAIL.copy()
 
         if user == user_animal.user:
@@ -286,15 +277,8 @@ class AnimalsExpUpView(APIView):
                 user.save()
                 return Response(SUCCESS)
 
-            response['msg'] = '경험치 물약이 부족합니다.'
+            response['message'] = '경험치 물약이 부족합니다.'
             return Response(response)
 
-        response['msg'] = '요청을 보낸 사용자와 해당 동물을 보유한 사용자가 다릅니다.'
+        response['message'] = '요청을 보낸 사용자와 해당 동물을 보유한 사용자가 다릅니다.'
         return Response(response)
-
-
-class DepthTestView(APIView):
-    def get(self, request, id):
-        user_animal = get_object_or_404(User_Animal, pk=id)
-        serializers = UserAnimalSerializer(instance=user_animal)
-        return Response(serializers.data)
