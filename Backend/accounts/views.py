@@ -25,10 +25,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-state = getattr(settings, 'STATE')
-BASE_URL = 'http://localhost:8000/'
-GOOGLE_CALLBACK_URI = BASE_URL + 'accounts/google/callback/'
-
 
 def date_init():
     # 매일 자정에 초기화 되는 컬럼 : 모두 부르기(User), 놀아주기 횟수, 대화하기 횟수(User_animal)
@@ -38,121 +34,51 @@ def date_init():
     users.update(is_called = default.get('is_called'))
     user_animals.update(talking_cnt=default.get('talking_cnt'), playing_cnt=default.get('playing_cnt'))
 
-    print("수정완료")
+    logger.info('스케줄링 완료')
 
 class StartAnimalView(APIView):
     def post(self, request):
-        
+
+        MBTI_STATIC = { 
+            '1111': [1, 'ISTJ'],
+            '1112': [2, 'ISTP'],
+            '1121': [3, 'ISFJ'],
+            '1122': [4, 'ISFP'],
+            '1211': [5, 'INTJ'],
+            '1212': [6, 'INTP'],
+            '1221': [7, 'INFJ'],
+            '1222': [8, 'INFP'],
+            '2111': [9, 'ESTJ'],
+            '2112': [10, 'ESTP'],
+            '2121': [11, 'ESFJ'],
+            '2122': [12, 'ESFP'],
+            '2211': [13, 'ENTJ'],
+            '2212': [14, 'ENTP'],
+            '2221': [15, 'ENFJ'],
+            '2222': [16, 'ENFP'],
+        }
         # 동물 추천 알고리즘
-        answer = request.data.get('answer')
-        mbti_animals = Mbti.objects.all()
-        animal = 0
-        mbti = 0
-        # I
-        if answer[0] == "1":
-            # IS
-            if answer[1] == "1":
-                # IST
-                if answer[2] == "1":
-                    #ISTJ 1 거북이 1111
-                    if answer[3] == "1":
-                        animal = mbti_animals.get(mbti="ISTJ").animal
-                        mbti = 1
-                    #ISTP 2 곰 1112
-                    else:
-                        animal = mbti_animals.get(mbti="ISTP").animal
-                        mbti = 2
-                # ISF
-                else:
-                    #ISFJ 3 사슴 1121
-                    if answer[3] == "1":
-                        animal = mbti_animals.get(mbti="ISFJ").animal
-                        mbti = 3
-                    #ISFP 4 고양이 1122
-                    else:
-                        animal = mbti_animals.get(mbti="ISFP").animal
-                        mbti = 4
-            # IN
-            else:
-                # INT
-                if answer[2] == "1":
-                    #INTJ 5 호랑이 1211
-                    if answer[3] == "1":
-                        animal = mbti_animals.get(mbti="INTJ").animal
-                        mbti = 5
-                    #INTP 6 닭 1212
-                    else:
-                        animal = mbti_animals.get(mbti="INTP").animal
-                        mbti = 6
-                # INF
-                else:
-                    #INFJ 7 기린 1221
-                    if answer[3] == "1":
-                        animal = mbti_animals.get(mbti="INFJ").animal
-                        mbti = 7
-                    #INFP 8 토끼 1222
-                    else:
-                        animal = mbti_animals.get(mbti="INFP").animal
-                        mbti = 8
-        #E
-        else:
-            # ES
-            if answer[1] == "1":
-                # EST
-                if answer[2] == "1":
-                    #ESTJ 9 강아지 2111
-                    if answer[3] == "1":
-                        animal = mbti_animals.get(mbti="ESTJ").animal
-                        mbti = 9
-                    #ESTP 10 강아지 2112
-                    else:
-                        animal = mbti_animals.get(mbti="ESTP").animal
-                        mbti = 10
-                # ESF
-                else:
-                    #ESFJ 11 양 2121
-                    if answer[3] =="1":
-                        animal = mbti_animals.get(mbti="ESFJ").animal
-                        mbti = 11
-                    #ESFP 12 토끼 2122
-                    else:
-                        animal = mbti_animals.get(mbti="ESFP").animal
-                        mbti = 12
-            # EN
-            else:
-                # ENT
-                if answer[2] == "1":
-                    #ENTJ 13 사자 2211
-                    if answer[3]==1:
-                        animal = mbti_animals.get(mbti="ENTJ").animal
-                        mbti = 13
-                    #ENTP 14 원숭이 2212
-                    else:
-                        animal = mbti_animals.get(mbti="ENTP").animal
-                        mbti = 14
-                # ENF
-                else:
-                    #ENFJ 15 코끼리 2221
-                    if answer[3] == "1":
-                        animal = mbti_animals.get(mbti="ENFJ").animal
-                        mbti = 15
-                    #ENFP 16 원숭이 2222
-                    else:
-                        animal = mbti_animals.get(mbti="ENFP").animal
-                        mbti = 16
         user = request.user
+        if User_Animal.objects.filter(user=user).exists():
+            return Response(FAIL)
+
         user_animals = user.user_animal_set.all()
         user_animals_count = user_animals.count()
         # 조작 이용자(튜토리얼로 강제 진입한 경우 등)
         if user_animals_count != 0:
             return Response({"success" : False})
-        user_animal = User_Animal(user=user, animal=animal, name=animal.species, color_id=0, is_located=True)
+
+        answer = request.data.get('answer')
+        mbti = get_object_or_404(Mbti, mbti=MBTI_STATIC[answer][1])
+        animal = mbti.animal
+        # user = request.user  63번 라인과 같아서 주석해둬여 혹시 이유가 있으면 다시 풀어주세요!
+        user_animal = User_Animal(user=user, animal=animal, name=animal.species, is_located=True)
         user_animal.save()
         user_animals_serializer = UserAnimalInfoSerializer(user_animal)
 
         response = {
             "animal" : user_animals_serializer.data,
-            "mbti_id" : mbti
+            "mbti_id" : MBTI_STATIC[answer][0]
         }
         return Response(response)
 
@@ -273,7 +199,7 @@ class LoadGameView(APIView):
                 })
         # 유저 정보 Json
         user_info = {
-            "name" : user.name,
+            # "name" : user.name
             "gold" : user.gold,
             "decorations" : decorations_ilst,
             "located_decorations": located_decorations,
@@ -355,7 +281,7 @@ class GachaView(APIView):
         # 뽑힌 오브젝트의 타입 판별
             # 동물일 경우(animals.models.Animal)
             if type(obj) is Animal:
-                user_animal = User_Animal(user=user, animal=obj, name=obj.species, color_id=0)
+                user_animal = User_Animal(user=user, animal=obj, name=obj.species)
                 user_animal.save()
                 user_animals_serializer = UserAnimalInfoSerializer(user_animal)
                 response.update({"type" : "animal", "pk" : user_animal.id,"id" : obj.id,"animal" : user_animals_serializer.data})
