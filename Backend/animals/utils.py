@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # date 포맷 형식
-date_format_slash = f'%y/%m/%d/%H/%M/%S'
+date_format_slash = f'%Y%m%d%H%M%S'
 
 
 # STT
@@ -128,7 +128,7 @@ def reward_gold(user, action, score=0):
 def reward_exp(animal, user, action, score=0):
     lookup_grade = [1, 1, 1, 2, 2, 3]  # lookup_grade[level] = grade
     levelup_exp = [0, 0, 100, 200, 300, 400, float('inf')]
-    reward = {'eatting': 50, 'talking': 50, 'playing_wordchain': 5 * score, 'exp_up': 50}
+    reward = {'eatting': 100, 'talking': 50, 'playing_wordchain': 5 * score, 'exp_up': 50}
     
     exp = animal.exp + reward[action]
     logger.info(f'exp 보상: {reward[action]}')
@@ -146,7 +146,7 @@ def reward_exp(animal, user, action, score=0):
 
 # 명령 허용 단어
 allowance_dict = [
-    '안자', '앉자', 
+    '안자', '앉자', '안아', 
     '어드려', 
     '빵이야', '방야', '방이야', '빵약', 
     '파닭파닭', '사닭파닭', '파닭사닭', '사닭사닭', '바닥파다', '바닥', '파닥', '바닥파닥', '파닭파닥', '바닥바닥', '파닭바닥', 
