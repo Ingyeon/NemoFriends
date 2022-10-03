@@ -284,16 +284,23 @@ class CacheView(APIView):
         print(ttest)
         return Response(SUCCESS)
 
+from kospeech.bin.inference import inference_audio
 
 class STTView(APIView):
+    def speech_to_text(self, filepath):
+        result = inference_audio(filepath)
+
+        return result
+
     def post(self, request):
         username = request.user.username
         audio = request.FILES.get('audio')
         
         fs = FileSystemStorage()
         filename = fs.save(f'{username}.wav', audio)
+        filepath = fs.path(filename)
 
-        context = speech_to_text(filename)
+        context = self.speech_to_text(filepath)
         print('STT 결과입니다.', context)
 
         fs.delete(filename)
