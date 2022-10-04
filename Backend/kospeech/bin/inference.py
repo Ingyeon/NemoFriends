@@ -52,7 +52,7 @@ def inference_audio(filepath):
     # parser.add_argument('--audio_path', type=str, required=True)
     # parser.add_argument('--device', type=str, required=False, default='cpu')
     # opt = parser.parse_args()
-    model_path = 'kospeech/model_ds2_20.pt'
+    model_path = 'kospeech/model_ds2_256.pt'
     audio_path = filepath
     device = 'cpu'
 
