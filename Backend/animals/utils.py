@@ -96,14 +96,14 @@ def google_stt_api(filename):
 
 
 def speech_to_text(data=None):
-    # try:
-    #     # data = vito_stt_api(data)
-    #     data = google_stt_api(data)
-    #     print('구글임')
-    # except:
-    #     # data = google_stt_api(data)
-    data = vito_stt_api(data)
-    logger.info(f'vito 결과: {data}')
+    kind = ''
+    try:
+      kind = 'google'
+      data = google_stt_api(data).replace(" " , "")
+    except:
+      kind = 'vito'
+      data = vito_stt_api(data).replace(" " , "")
+    logger.info(f'{kind} 결과: {data}')
     return data
 
 
@@ -111,7 +111,7 @@ def recongize(username, audio):
     fs = FileSystemStorage()
     filename = fs.save(f'{username}.wav', audio)
 
-    context = speech_to_text(filename).replace(" " , "")
+    context = speech_to_text(filename)
 
     fs.delete(filename)
     fs.delete(settings.MEDIA_ROOT + f'/{filename}')
@@ -119,7 +119,7 @@ def recongize(username, audio):
 
 
 def reward_gold(user, action, score=0):
-    reward = {'eatting': 100, 'level_up': 5 * score, 'talking': 100, 'playing_wordchain': 50 * score, 'playing_maze': score}
+    reward = {'eatting': 100, 'level_up': 5 * score, 'talking': 100, 'playing_maze': score}
     logger.info(f'gold 보상: {reward[action]}')
     user.gold += reward[action]
     return user
@@ -145,23 +145,23 @@ def reward_exp(animal, user, action, score=0):
     return animal
 
 # 명령 허용 단어
-allowance_dict = [
-    '안자', '앉자', '안아', 
-    '어드려', 
-    '빵이야', '방야', '방이야', '빵약', 
-    '파닭파닭', '사닭파닭', '파닭사닭', '사닭사닭', '바닥파다', '바닥', '파닥', '바닥파닥', '파닭파닥', '바닥바닥', '파닭바닥', 
-    '나라라', '나아라', 
-    '짬프', '짬푸', 
-    '팔사', '갈사', 
-    '뽈', '올', 
-    '메리크지마',
-    '으르러', 
-    '유워', '노아', '누와', 
-    '루알', 
-    '나이트셔', 
-    '짬프짬푸', '짬푸짬프', '짬프짬프', '짬푸짬푸', 
-    '공중채비'
-    ]
+# allowance_dict = {
+#     '앉아': {'안자', '앉자', '안아'}
+#     '어드려', 
+#     '빵이야', '방야', '방이야', '빵약', 
+#     '파닭파닭', '사닭파닭', '파닭사닭', '사닭사닭', '바닥파다', '바닥', '파닥', '바닥파닥', '파닭파닥', '바닥바닥', '파닭바닥', 
+#     '나라', '나아', 
+#     '짬프', '짬푸', 
+#     '팔사', '갈사', 
+#     '뽈', '올', 
+#     '메리크지마',
+#     '으르러', 
+#     '유워', '노아', '누와', 
+#     '루알', 
+#     '나이트셔', 
+#     '짬프짬푸', '짬푸짬프', '짬프짬프', '짬푸짬푸', 
+#     '공중채비'
+# }
 
 
 
