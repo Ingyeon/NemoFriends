@@ -7,7 +7,6 @@ from rest_framework.decorators import APIView
 from rest_framework.response import Response
 
 from .models import Animal, User_Animal
-from .serializers import AnimalsRenameSerializer
 from .utils import *
 from utils import SUCCESS, FAIL
 import logging
@@ -16,7 +15,9 @@ import random
 from datetime import datetime, timedelta
 from time import strftime, strptime
 
+
 logger = logging.getLogger(__name__)
+
 
 class AnimalsEatView(APIView):
     def post(self, request):
@@ -24,6 +25,10 @@ class AnimalsEatView(APIView):
         user_animal = get_object_or_404(User_Animal, pk=request.data.get('id'))
 
         if request.user == user_animal.user:
+            if not user_animal.is_located:
+                response = get_absent_msg()
+                return Response(response)
+
             # 먹이 쿨타임
             last_time = user_animal.last_eating_time
             possible_time = last_time + timedelta(hours=4)
@@ -56,19 +61,34 @@ class AnimalsEatView(APIView):
 
             # 섭취 No
             response.update(FAIL)
-            # response['recommend'] = random.choice(feeds)
             return Response(response)
 
 
 class AnimalsRenameView(APIView):
     def post(self, request):
-        user_animal = get_object_or_404(User_Animal, pk=request.data.get('id'))
-        
-        if request.user == user_animal.user:
-            serializer = AnimalsRenameSerializer(instance=user_animal, data=request.data)
-            if serializer.is_valid(raise_exception=True):
-                serializer.save()
-                return Response(SUCCESS)
+        user = request.user
+        id = request.data.get('id')
+        user_animal = get_object_or_404(User_Animal, pk=id)
+        response = FAIL.copy()
+
+        if user == user_animal.user:
+            name = request.data.get('name')
+
+            if not len(name) <= 5:
+                response['msg'] = '5글자를 초과했습니다.'
+                return Response(response)
+
+            name = name.replace(' ', '')
+
+            if User_Animal.objects.filter(user=user, name=name).exclude(pk=id).exists():
+                response = FAIL.copy()
+                response['msg'] = '해당 이름을 보유한 동물이 이미 존재합니다.'
+                return Response(FAIL)
+
+            user_animal.name = name
+            user_animal.save()
+            return Response(SUCCESS)
+
         else:
             return Response(FAIL)
 
@@ -78,22 +98,25 @@ class AnimalsTalkView(APIView):
         action = 'talking'
         grade = user_animal.grade
         commands = user_animal.animal.commands[:grade+1]
-        # commands.extend(allowance_dict)
-        
-        for i in range(1, len(commands)):
-            if commands[i] in context:
-                # 대화 보상 Ok
-                if user_animal.talking_cnt:
-                    user_animal = reward_exp(user_animal, user, action)
-                    user_animal.talking_cnt -= 1
-                    user_animal.save()
-                    user = reward_gold(user, action)
-                    user.save()
 
-                # 대화 보상 No
-                response = {'animal_id': user_animal.animal_id, 'cmd': i}
-                response.update(SUCCESS)
-                return response
+        for i in range(1, len(commands)):
+            allowance_commands = [commands[i]] + list(filter(None, allowance_dict.get(commands[i])))
+
+            for allowance_command in allowance_commands:
+                if allowance_command in context:
+
+                    # 대화 보상 Ok
+                    if user_animal.talking_cnt:
+                        user_animal = reward_exp(user_animal, user, action)
+                        user_animal.talking_cnt -= 1
+                        user_animal.save()
+                        user = reward_gold(user, action)
+                        user.save()
+
+                    # 대화 보상 No
+                    response = {'animal_id': user_animal.animal_id, 'cmd': i}
+                    response.update(SUCCESS)
+                    return response
         return FAIL
 
     def post(self, request):
@@ -101,8 +124,9 @@ class AnimalsTalkView(APIView):
         response = {}
         user = get_object_or_404(get_user_model(), username=request.user)
         user_animals = get_list_or_404(User_Animal, user=user)
+
         for user_animal in user_animals:
-            if user_animal.name in context:
+            if user_animal.is_located and user_animal.name in context:
                 response = self.talk(user_animal, user, context)
                 return Response(response)
         return Response(FAIL)
@@ -114,6 +138,10 @@ class AnimalsPlayWordchainStartView(APIView):
         animal_id = request.data.get('animal_id')
         animal = get_object_or_404(Animal, pk=animal_id)
         user_animal = get_object_or_404(User_Animal, user=user, animal=animal)
+
+        if not user_animal.is_located:
+            response = get_absent_msg()
+            return Response(response)
 
         if user_animal.playing_cnt < 1:
             response = FAIL.copy()
@@ -245,15 +273,26 @@ class AnimalsPlaceView(APIView):
 
 class AnimalsMazeView(APIView):
     def post(self, request):
+        score = int(request.data.get('score'))
         user = request.user
         user_animal = get_object_or_404(User_Animal, pk=request.data.get('id'))
+        response = FAIL.copy()
+
+        if score >= 2000:
+            response['msg'] = '비정상적인 접근입니다.'
+            return Response(response)
 
         if user == user_animal.user:
-            score = int(request.data.get('score'))
+            if not user_animal.is_located:
+                response = get_absent_msg()
+                return Response(response)
+
             user = reward_gold(request.user, 'playing_maze', score*user_animal.level)
             user.save()
             return Response(SUCCESS)
-        return Response(FAIL)
+
+        response['msg'] = '요청 유저와 동물 소유 유저가 다릅니다.'
+        return Response(response)
 
 
 class AnimalsExpUpView(APIView):
@@ -263,6 +302,11 @@ class AnimalsExpUpView(APIView):
         response = FAIL.copy()
 
         if user == user_animal.user:
+            
+            if not user_animal.is_located:
+                response = get_absent_msg()
+                return Response(response)
+
             if 0 < user.exp_cnt:
                 user_animal = reward_exp(user_animal, user, 'exp_up')
                 user_animal.save()
