@@ -270,6 +270,7 @@ CACHES = {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": "redis://j7c201.p.ssafy.io:6379/1", # 1번 DB
         "OPTIONS": {
+            "PASSWORD": "mypassword",
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         }
     }
